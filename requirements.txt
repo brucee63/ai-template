@@ -1,3 +1,7 @@
+anthropic
+instructor
 jinja2
+pydantic
 pytest
 python-frontmatter
+python-dotenv 
