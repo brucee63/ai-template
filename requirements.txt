@@ -1,7 +1,10 @@
 anthropic
 instructor
 jinja2
+openai
+pandas
 pydantic
 pytest
 python-frontmatter
 python-dotenv 
+timescale-vector
