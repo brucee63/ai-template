@@ -8,3 +8,6 @@ pytest
 python-frontmatter
 python-dotenv 
 timescale-vector
+ngram
+jellyfish
+rapidfuzz
