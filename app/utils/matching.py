@@ -249,6 +249,75 @@ def jaro_winkler_match(user_input, customer_df, column_to_check, acronym_dict=No
 
     return temp_df[[column_to_check, 'jaro_winkler_score', 'best_jaro_winkler_form']]
 
+def jaccard_match(user_input, customer_df, column_to_check, acronym_dict=None):
+    """
+    Perform Jaccard similarity matching between user input and DataFrame values, handling acronyms.
+    
+    Args:
+        user_input (str): The input string to match against.
+        customer_df (pd.DataFrame): DataFrame containing the data to match against.
+        column_to_check (str): Column in the DataFrame to perform matching on.
+        acronym_dict (dict, optional): Dictionary mapping acronyms to their expanded forms.
+    
+    Returns:
+        pd.DataFrame: DataFrame with Jaccard scores (0-1) and matched forms.
+    """
+    if column_to_check not in customer_df.columns:
+        raise ValueError(f"Column '{column_to_check}' not found in DataFrame.")
+
+    temp_df = customer_df.copy()
+    if acronym_dict is None:
+        acronym_dict = {}
+
+    def jaccard_similarity(s1, s2):
+        # Handle empty strings
+        if len(s1) == 0 and len(s2) == 0:
+            return 1.0
+        if len(s1) == 0 or len(s2) == 0:
+            return 0.0
+
+        # Convert strings to sets of words
+        set1 = set(s1.split())
+        set2 = set(s2.split())
+        
+        # Calculate intersection and union
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        
+        # Jaccard similarity is intersection over union
+        return intersection / union if union > 0 else 0.0
+
+    def expand_acronyms(text, acronym_dict):
+        variations = [text]
+        words = text.split()
+        for i, word in enumerate(words):
+            if word in acronym_dict:
+                expanded = acronym_dict[word]
+                new_variation = " ".join(words[:i] + [expanded] + words[i+1:])
+                variations.append(new_variation)
+        return variations
+
+    temp_df['jaccard_score'] = 0.0
+    temp_df['best_jaccard_form'] = ""
+
+    for index, row in temp_df.iterrows():
+        original_value = str(row[column_to_check])  # Ensure string type
+        value_variations = expand_acronyms(original_value, acronym_dict)
+        
+        best_jaccard_score = 0.0
+        best_form = original_value
+        
+        for variation in value_variations:
+            score = jaccard_similarity(user_input, variation)
+            if score > best_jaccard_score:
+                best_jaccard_score = score
+                best_form = variation
+        
+        temp_df.at[index, 'jaccard_score'] = best_jaccard_score
+        temp_df.at[index, 'best_jaccard_form'] = best_form
+
+    return temp_df[[column_to_check, 'jaccard_score', 'best_jaccard_form']]
+
 def find_top_matches(user_input, customer_df, column_to_check, acronym_dict=None, top_n=5, method='hybrid'):
     """
     Find top matches using n-gram, phonetic, Levenshtein, or hybrid approaches.
@@ -264,8 +333,8 @@ def find_top_matches(user_input, customer_df, column_to_check, acronym_dict=None
     Returns:
     - pd.DataFrame: Top N matches with scores and match flags.
     """
-    if method not in ['hybrid', 'ngram', 'phonetic', 'levenshtein', 'jarowinkler']:
-        raise ValueError("Method must be 'hybrid', 'ngram', 'phonetic', 'levenshtein', 'jarowinkler'.")
+    if method not in ['hybrid', 'ngram', 'phonetic', 'levenshtein', 'jarowinkler', 'jaccard']:
+        raise ValueError("Method must be 'hybrid', 'ngram', 'phonetic', 'levenshtein', 'jarowinkler', or 'jaccard'.")
 
     if method == 'ngram':
         result_df = ngram_match(user_input, customer_df, column_to_check, acronym_dict)
@@ -282,6 +351,10 @@ def find_top_matches(user_input, customer_df, column_to_check, acronym_dict=None
     elif method == "jarowinkler":
         result_df = jaro_winkler_match(user_input, customer_df, column_to_check, acronym_dict)
         return result_df[[column_to_check, 'jaro_winkler_score']].sort_values(by='jaro_winkler_score', ascending=False).head(top_n)
+    
+    elif method == "jaccard":
+        result_df = jaccard_match(user_input, customer_df, column_to_check, acronym_dict)
+        return result_df[[column_to_check, 'jaccard_score']].sort_values(by='jaccard_score', ascending=False).head(top_n)
     
     else:  # hybrid (default)
         ngram_df = ngram_match(user_input, customer_df, column_to_check, acronym_dict)
@@ -322,7 +395,7 @@ if __name__ == "__main__":
     }
 
     # Test with hybrid method
-    user_input = "John Smith Plumbing"
+    user_input = "John Sm Plumbing"
     top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='hybrid')
     print(f"Top {len(top_matches)} hybrid matches for '{user_input}':")
     print(top_matches)
@@ -346,4 +419,8 @@ if __name__ == "__main__":
     top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='jarowinkler')
     print(f"\nTop {len(top_matches)} jarowinkler matches for '{user_input}':")
     print(top_matches)
-        
+    
+    # Test with jaccard method
+    top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='jaccard')
+    print(f"\nTop {len(top_matches)} jaccard matches for '{user_input}':")
+    print(top_matches)

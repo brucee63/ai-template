@@ -55,3 +55,8 @@ def test_matching():
     
     assert len(top_matches) > 0
     assert top_matches.iloc[0]['full_name'] == 'JS Plumbing'
+
+    # Test with jaccard method
+    top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='jaccard')
+    print(f"\nTop {len(top_matches)} Jaccard matches for '{user_input}':")
+    print(top_matches)
