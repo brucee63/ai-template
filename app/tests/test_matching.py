@@ -39,3 +39,19 @@ def test_matching():
 
     assert len(top_matches) > 0
     assert top_matches.iloc[0]['full_name'] == 'JS Plumbing'  
+
+    # Test with jarowinkler method
+    top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='jarowinkler')
+    print(f"\nTop {len(top_matches)} Jaro-Winkler matches for '{user_input}':")
+    print(top_matches)
+    
+    assert len(top_matches) > 0
+    assert top_matches.iloc[0]['full_name'] == 'JS Plumbing'
+    
+    # Test with n-gram method
+    top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='ngram')
+    print(f"\nTop {len(top_matches)} n-gram matches for '{user_input}':")
+    print(top_matches)
+    
+    assert len(top_matches) > 0
+    assert top_matches.iloc[0]['full_name'] == 'JS Plumbing'

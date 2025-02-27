@@ -149,6 +149,106 @@ def levenshtein_match(user_input, customer_df, column_to_check, acronym_dict=Non
 
     return temp_df[[column_to_check, 'levenshtein_score', 'best_levenshtein_form']]
 
+def jaro_winkler_match(user_input, customer_df, column_to_check, acronym_dict=None):
+    """
+    Perform Jaro-Winkler similarity matching between user input and DataFrame values, handling acronyms.
+    
+    Args:
+        user_input (str): The input string to match against.
+        customer_df (pd.DataFrame): DataFrame containing the data to match against.
+        column_to_check (str): Column in the DataFrame to perform matching on.
+        acronym_dict (dict, optional): Dictionary mapping acronyms to their expanded forms.
+    
+    Returns:
+        pd.DataFrame: DataFrame with Jaro-Winkler scores (0-1) and matched forms.
+    """
+    if column_to_check not in customer_df.columns:
+        raise ValueError(f"Column '{column_to_check}' not found in DataFrame.")
+
+    temp_df = customer_df.copy()
+    if acronym_dict is None:
+        acronym_dict = {}
+
+    def jaro_winkler_similarity(s1, s2):
+        # Handle empty strings
+        if len(s1) == 0 and len(s2) == 0:
+            return 1.0
+        if len(s1) == 0 or len(s2) == 0:
+            return 0.0
+
+        # Find matching characters and their pairs
+        max_distance = (max(len(s1), len(s2)) // 2) - 1
+        possible_j_for_i = [[] for _ in range(len(s1))]
+        for i in range(len(s1)):
+            for j in range(len(s2)):
+                if s1[i] == s2[j] and abs(i - j) <= max_distance:
+                    possible_j_for_i[i].append(j)
+
+        # Find matching pairs (greedy approach)
+        used_j = set()
+        matching_pairs = []
+        for i in range(len(s1)):
+            for j in possible_j_for_i[i]:
+                if j not in used_j:
+                    used_j.add(j)
+                    matching_pairs.append((i, j))
+                    break
+
+        m = len(matching_pairs)
+        if m == 0:
+            return 0.0
+
+        # Calculate transpositions (t)
+        t = sum(1 for i, j in matching_pairs if i != j) / 2.0
+
+        # Calculate Jaro similarity
+        jaro = (m / len(s1) + m / len(s2) + (m - t) / m) / 3.0
+
+        # Calculate common prefix length (up to 4)
+        l = 0
+        for i in range(min(len(s1), len(s2), 4)):
+            if s1[i] == s2[i]:
+                l += 1
+            else:
+                break
+
+        # Calculate Jaro-Winkler similarity with p=0.1
+        p = 0.1
+        jaro_winkler = jaro + l * p * (1 - jaro)
+
+        return jaro_winkler
+
+    def expand_acronyms(text, acronym_dict):
+        variations = [text]
+        words = text.split()
+        for i, word in enumerate(words):
+            if word in acronym_dict:
+                expanded = acronym_dict[word]
+                new_variation = " ".join(words[:i] + [expanded] + words[i+1:])
+                variations.append(new_variation)
+        return variations
+
+    temp_df['jaro_winkler_score'] = 0.0
+    temp_df['best_jaro_winkler_form'] = ""
+
+    for index, row in temp_df.iterrows():
+        original_value = str(row[column_to_check])  # Ensure string type
+        value_variations = expand_acronyms(original_value, acronym_dict)
+        
+        best_jaro_winkler_score = 0.0
+        best_form = original_value
+        
+        for variation in value_variations:
+            score = jaro_winkler_similarity(user_input, variation)
+            if score > best_jaro_winkler_score:
+                best_jaro_winkler_score = score
+                best_form = variation
+        
+        temp_df.at[index, 'jaro_winkler_score'] = best_jaro_winkler_score
+        temp_df.at[index, 'best_jaro_winkler_form'] = best_form
+
+    return temp_df[[column_to_check, 'jaro_winkler_score', 'best_jaro_winkler_form']]
+
 def find_top_matches(user_input, customer_df, column_to_check, acronym_dict=None, top_n=5, method='hybrid'):
     """
     Find top matches using n-gram, phonetic, Levenshtein, or hybrid approaches.
@@ -164,8 +264,8 @@ def find_top_matches(user_input, customer_df, column_to_check, acronym_dict=None
     Returns:
     - pd.DataFrame: Top N matches with scores and match flags.
     """
-    if method not in ['hybrid', 'ngram', 'phonetic', 'levenshtein']:
-        raise ValueError("Method must be 'hybrid', 'ngram', 'phonetic', or 'levenshtein'.")
+    if method not in ['hybrid', 'ngram', 'phonetic', 'levenshtein', 'jarowinkler']:
+        raise ValueError("Method must be 'hybrid', 'ngram', 'phonetic', 'levenshtein', 'jarowinkler'.")
 
     if method == 'ngram':
         result_df = ngram_match(user_input, customer_df, column_to_check, acronym_dict)
@@ -178,6 +278,10 @@ def find_top_matches(user_input, customer_df, column_to_check, acronym_dict=None
     elif method == 'levenshtein':
         result_df = levenshtein_match(user_input, customer_df, column_to_check, acronym_dict)
         return result_df[[column_to_check, 'levenshtein_score']].sort_values(by='levenshtein_score', ascending=False).head(top_n)
+    
+    elif method == "jarowinkler":
+        result_df = jaro_winkler_match(user_input, customer_df, column_to_check, acronym_dict)
+        return result_df[[column_to_check, 'jaro_winkler_score']].sort_values(by='jaro_winkler_score', ascending=False).head(top_n)
     
     else:  # hybrid (default)
         ngram_df = ngram_match(user_input, customer_df, column_to_check, acronym_dict)
@@ -227,3 +331,19 @@ if __name__ == "__main__":
     top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='levenshtein')
     print(f"\nTop {len(top_matches)} Levenshtein matches for '{user_input}':")
     print(top_matches)
+
+    # Test with n-gram method
+    top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='ngram')
+    print(f"\nTop {len(top_matches)} n-gram matches for '{user_input}':")
+    print(top_matches)
+    
+    # Test with phonetic method
+    top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='phonetic')
+    print(f"\nTop {len(top_matches)} phonetic matches for '{user_input}':")
+    print(top_matches)
+    
+    # Test with jarowinkler method
+    top_matches = find_top_matches(user_input, df, 'full_name', acronym_dict=acronym_dict, method='jarowinkler')
+    print(f"\nTop {len(top_matches)} jarowinkler matches for '{user_input}':")
+    print(top_matches)
+        
