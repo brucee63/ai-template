@@ -1,11 +1,30 @@
-from config.settings import get_settings
+from prompts.prompt_manager import PromptManager
 
-def test_openai_settings():
-    settings = get_settings()
-    assert settings.openai.api_key is not None
-    assert settings.openai.default_model == "gpt-4o"
-    assert settings.openai.embedding_model == "text-embedding-3-small"
+def test_prompts():
+    test_prompt = PromptManager.get_prompt("sample", test_value="World")
+    assert test_prompt == "Hello World!"
 
-def test_postgres_settings():
-    settings = get_settings()
-    assert settings.database.service_url is not None
+    template_info = PromptManager.get_template_info("sample")
+    assert template_info == {
+        "name": "sample",
+        "description": "This is a test prompt",
+        "author": "Test Author",
+        "variables": ["test_value"],
+        "frontmatter": {"description": "This is a test prompt", "author": "Test Author"},
+    }
+
+def test_prompts_cond():
+    test_prompt = PromptManager.get_prompt("sample_cond", test_value="World")
+    assert test_prompt == "\nHello World!\n"
+
+    test_prompt = PromptManager.get_prompt("sample_cond", test_value="Goodbye")
+    assert test_prompt == "\nNot Hello World!\n"
+
+    template_info = PromptManager.get_template_info("sample_cond")
+    assert template_info == {
+        "name": "sample_cond",
+        "description": "This is a test prompt with condition",
+        "author": "Test Author",
+        "variables": ["test_value"],
+        "frontmatter": {"description": "This is a test prompt with condition", "author": "Test Author"},
+    }
